@@ -70,6 +70,8 @@
 
 #include <nil/crypto3/random/algebraic_random_device.hpp>
 
+#include "encrypted_input_voting_test.hpp"
+
 using namespace nil::crypto3;
 using namespace nil::crypto3::algebra;
 using namespace nil::crypto3::pubkey;
@@ -605,6 +607,7 @@ struct marshaling_policy {
     static std::vector<std::vector<bool>>
         deserialize_voters_public_keys(std::size_t tree_depth, const std::vector<std::vector<std::uint8_t>> &blobs) {
         std::size_t participants_number = 1 << tree_depth;
+        BOOST_ASSERT(blobs.size() == participants_number);
         std::vector<std::vector<bool>> result;
 
         for (auto i = 0; i < participants_number; i++) {
@@ -718,11 +721,20 @@ struct marshaling_policy {
     }
 };
 
+bool did_srand = false;
+
+void srand_once() {
+    if(!did_srand) {
+        did_srand = true;
+        std::srand(std::time(0));
+    }
+}
+
 template<typename ValueType, std::size_t N>
 typename std::enable_if<std::is_unsigned<ValueType>::value, std::vector<std::array<ValueType, N>>>::type
     generate_random_data(std::size_t leaf_number) {
     std::vector<std::array<ValueType, N>> v;
-    std::srand(std::time(0));
+    srand_once();
     for (std::size_t i = 0; i < leaf_number; ++i) {
         std::array<ValueType, N> leaf {};
         std::generate(std::begin(leaf), std::end(leaf),
@@ -1066,7 +1078,7 @@ void process_encrypted_input_mode_init_admin_phase(
 
     std::vector<bool> eid(eid_bits);
     std::vector<scalar_field_value_type> eid_field;
-    std::srand(std::time(0));
+    srand_once();
     std::generate(eid.begin(), eid.end(), [&]() { return std::rand() % 2; });
     std::cout << "Voting session (eid) is: ";
     for (auto i : eid) {
@@ -1352,6 +1364,12 @@ template<typename T>
 struct buffer {
     std::size_t size;
     T *ptr;
+
+    // buffer(){}
+    // buffer(std::size_t _size) {
+    //     size = _size;
+    //     ptr = new T[size];
+    // }
 };
 
 buffer<char> blob_to_buffer(const std::vector<std::uint8_t> &blob) {
@@ -1372,6 +1390,7 @@ std::vector<std::vector<std::uint8_t>> super_buffer_to_blobs(const buffer<buffer
     res.reserve(super_buff->size);
 
     for (std::size_t i = 0; i < super_buff->size; ++i) {
+        std::cout<<"buffer_size: "<<super_buff->ptr[i]->size<<std::endl;
         res.push_back(buffer_to_blob(super_buff->ptr[i]));
     }
 
@@ -1403,14 +1422,22 @@ void init_election(std::size_t tree_depth, std::size_t eid_bits,
     std::vector<std::uint8_t> eid_blob;
     std::vector<std::uint8_t> rt_blob;
 
+    std::cout<<"******************"<<public_keys_super_buffer->size<<std::endl;
     auto blobs = super_buffer_to_blobs(public_keys_super_buffer);
     std::cout << "Finished conversion from buffer to blobs of public keys" << std::endl;
-
+    std::cout<<"******************"<<blobs.size()<<std::endl;
     auto public_keys = marshaling_policy::deserialize_voters_public_keys(tree_depth, blobs);
-    for (auto c : public_keys[0]) {
+     std::cout<<"******************"<<public_keys.size()<<std::endl;
+    std::cout <<"last blob size:"<<blobs[blobs.size()-1].size()<<std::endl;
+    for(auto pk : public_keys) {
+        std::cout<<"size: " << pk.size() << "; ";
+        for (auto c : pk) {
         std::cout << c;
+        }
+        std::cout << std::endl;
+        std::cout << std::endl;
     }
-    std::cout << std::endl;
+
     std::cout << "Finished deserialization of public keys" << std::endl;
 
     process_encrypted_input_mode_init_admin_phase(tree_depth, eid_bits, public_keys, r1cs_proving_key_blob,
@@ -1471,6 +1498,14 @@ void generate_vote(std::size_t tree_depth, std::size_t voter_idx, std::size_t vo
 
     std::cout << "Finished deserialization of rt,eid,sk,pk_eid,proving_key,verification_key" << std::endl;
 
+    for(auto pk : public_keys) {
+        for (auto c : pk) {
+        std::cout << c;
+        }
+        std::cout << std::endl;
+        std::cout << std::endl;
+    }
+
     process_encrypted_input_mode_vote_phase(tree_depth, voter_idx, vote, public_keys, rt, eid, sk, pk_eid, gg_keypair,
                                             proof_blob_out, pinput_blob_out, ct_blob_out, eid_blob_out, sn_blob_out,
                                             rt_blob_out, vk_crs_blob_out, pk_eid_blob_out);
@@ -1512,14 +1547,66 @@ void tally_votes(std::size_t tree_depth,
     process_encrypted_input_mode_tally_admin_phase(tree_depth, cts, sk_eid, vk_eid, gg_keypair, dec_proof_blob,
                                                    voting_res_blob);
 }
+
+void test() {
+    std::cout<<"seed:"<<std::time(0)<<std::endl;
+    std::cout<<"seed:"<<std::time(0)<<std::endl;
+    std::cout<<"starting tests"<<std::endl;
+    // wasm_test::test_jubjub_pedersen_encrypted_input_voting_component();
+    // std::cout<<"starting test 2"<<std::endl;
+    // wasm_test::test_jubjub_merkle_container_pedersen_encrypted_input_voting_component();
+
+    std::size_t tree_depth = 2;
+    
+    buffer<char> voter_sks[4];
+    buffer<char> voter_pks[4];
+    for(std::size_t i=0; i<4; ++i) {
+        generate_voter_keypair(&voter_pks[i], &voter_sks[i]);
+    }
+    
+    buffer<char>* public_keys[4] {
+            &(voter_pks[0]),
+            &(voter_pks[1]),
+            &(voter_pks[2]),
+            &(voter_pks[3]),
+        };
+    const buffer<buffer<char>* const> public_keys_buffer{4,
+        public_keys
+    };
+    // const buffer<buffer<char>* const>* const public_keys_buffer_ptr = &public_keys_buffer;
+
+    buffer<char> r1cs_proving_key_out, r1cs_verification_key_out,
+                   public_key_out, secret_key_out,
+                   verification_key_out, eid_out, rt_out;
+
+    init_election(tree_depth, 64, &public_keys_buffer, &r1cs_proving_key_out, &r1cs_verification_key_out,
+                   &public_key_out, &secret_key_out,
+                   &verification_key_out, &eid_out, &rt_out);
+    buffer<char> proof_buffer_out,
+                   pinput_buffer_out, ct_buffer_out,
+                   sn_buffer_out;
+
+    std::size_t voter_idx=3;
+    std::size_t vote=0;
+    
+    generate_vote(tree_depth, voter_idx, vote, &public_keys_buffer, &rt_out, &eid_out, 
+                    &(voter_sks[voter_idx]), &public_key_out, &r1cs_proving_key_out,
+                    &r1cs_verification_key_out, &proof_buffer_out,
+                   &pinput_buffer_out, &ct_buffer_out,
+                   &sn_buffer_out
+    );
+    
+    std::cout<<"finished tests"<<std::endl;
+
+}
+
 }
 
 int main(int argc, char *argv[]) {
-    std::srand(std::time(0));
-
 #if __EMSCRIPTEN__
 
 #else
+    std::srand(std::time(0));
     boost::program_options::options_description desc(
         "R1CS Generic Group PreProcessing Zero-Knowledge Succinct Non-interactive ARgument of Knowledge "
         "(https://eprint.iacr.org/2016/260.pdf) CLI Proof Generator.");

@@ -1,4 +1,4 @@
-const cli = require("./cli.js")
+const cli = require("../../build-wasm/bin/cli/cli")
 
 /**
  * 
@@ -13,6 +13,7 @@ function Uint8ArrayToBufferPtr(blob) {
     buff_ptr = cli._malloc(8);
     buff_ptri32 = buff_ptr >> 2;
     cli.HEAPU32.subarray(buff_ptri32, buff_ptri32+2).set([size, ptr]);
+    console.log(size);
     return buff_ptr;
 }
 
@@ -30,9 +31,9 @@ function Uint8ArrayArrayToSuperBufferPtr(blobs) {
     cli.HEAPU32.subarray(ptr_i32, ptr_i32+size).set(buffers);
     
     super_buff_ptr = cli._malloc(8);
-    super_buff_ptri32 = buff_ptr >> 2;
-    cli.HEAPU32.subarray(buff_ptri32, buff_ptri32+2).set([size, ptr]);
-    return buff_ptr;
+    super_buff_ptri32 = super_buff_ptr >> 2;
+    cli.HEAPU32.subarray(super_buff_ptri32, super_buff_ptri32+2).set([size, ptr]);
+    return super_buff_ptr;
 }
 
 /**
@@ -123,7 +124,16 @@ const eid_len = 64;
  */
 exports.init_election = function (tree_depth, public_keys) {
     public_keys_super_buffer = Uint8ArrayArrayToSuperBufferPtr(public_keys);
-    
+    buff_ptri32 = public_keys_super_buffer>>2;
+    let [size,ptr] = cli.HEAPU32.subarray(buff_ptri32, buff_ptri32+2);
+    console.log('sb size:', size);
+    console.log('sb ptr:', ptr);
+    ptrs=cli.HEAPU32.subarray(ptr>>2, (ptr>>2)+size);
+    console.log(ptrs)
+    last_ptr = ptrs.at(-1)
+    console.log(last_ptr)
+    let [last_ptr_size,last_ptr_ptr] = cli.HEAPU32.subarray(last_ptr>>2, (last_ptr>>2)+2);
+    console.log('last_ptr_size',last_ptr_size);
     r1cs_proving_key_bptr = cli._malloc(8);
     r1cs_verification_key_bptr = cli._malloc(8);
     public_key_bptr = cli._malloc(8);
